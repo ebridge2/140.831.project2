@@ -70,8 +70,9 @@ acc.data <- lapply(acc.dat, function(acc.file) {
   df.i$activity_lab <- map_vec[df.i$activity]
   return(df.i)
 })
+names(acc.data) <- sapply(acc.dat, function(x) gsub(pattern="\\.csv$", "", x))
 ```
 
 ```{r}
-saveRDS(acc.data, file='./data/acc_data.rds')
+saveRDS(acc.data, file='../data/acc_data.rds')
 ```
