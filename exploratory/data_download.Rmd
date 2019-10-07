@@ -1,0 +1,77 @@
+---
+title: "Downloading Accelerometry Data"
+author: "Eric Bridgeford"
+date: "October 7, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(data.table)
+library(magrittr)
+library(reshape2)
+library(ggplot2)
+library(latex2exp)
+library(raster)
+library(dplyr)
+select <- dplyr::select; filter <- dplyr::filter; summarize <- dplyr::summarize
+mutate <- dplyr::mutate
+
+## Replace with your directory to the folder where data/IU_walking_driving_climbing.zip
+## is/will be downloaded
+wd <- "./"
+```
+
+```{r}
+wd_dat.dir <- file.path(wd, "data")
+
+acc_dat.dir <- file.path(wd_dat.dir, "IU_walking_driving_climbing")
+acc_dat.zip <- file.path(wd_dat.dir, "IU_walking_driving_climbing.zip")
+acc_dat.zip.url <- "https://www.dropbox.com/s/pf5l2ki9t2ae2df/IU_walking_driving_climbing.zip?dl=1"
+
+## Make data dir if does not exist yet
+if (!dir.exists(wd_dat.dir)){
+  dir.create(wd_dat.dir)
+}
+
+## If files not downloaded yet, download (182.6 MB)
+if (!dir.exists(acc_dat.dir) & !file.exists(acc_dat.zip)){
+  ## Download .zip file
+  download.file(acc_dat.zip.url, acc_dat.zip)
+  ## Unzip into data/ directory
+  unzip(acc_dat.zip, exdir = wd_dat.dir)
+  ## Remove .zip file
+  file.remove(acc_dat.zip)
+}
+```
+
+```{r}
+fpath.demog <- file.path(acc_dat.dir, "participant_demog.csv")
+df.demog <-  as.data.frame(fread(fpath.demog))
+head(df.demog)
+```
+
+```{r}
+list.files(acc_dat.dir)
+acc.dat <- list.files(file.path(acc_dat.dir, "raw_accelerometry_data"))
+```
+
+```{r}
+map_vec <- rep(NA, 99)
+map_vec[c(1,2,3,4,77,99)] <- c("walking", "descending_stairs",  "ascending_stairs",
+                               "driving", "clapping", "non_study_activity")
+acc.data <- lapply(acc.dat, function(acc.file) {
+  fpath.i <- file.path(acc_dat.dir, "raw_accelerometry_data", acc.file)
+  df.i <-  as.data.frame(fread(fpath.i))
+  df.i$activity_lab <- map_vec[df.i$activity]
+  return(df.i)
+})
+```
+
+```{r}
+saveRDS(acc.data, file='./data/acc_data.rds')
+```
