@@ -1,0 +1,113 @@
+---
+title: "EDA"
+author: "Jiyang Wen"
+date: "2019/10/8"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r reshape data}
+library(data.table)
+library(magrittr)
+library(reshape2)
+library(ggplot2)
+library(latex2exp)
+library(raster)
+library(dplyr)
+library(rlist)
+select <- dplyr::select; filter <- dplyr::filter; summarize <- dplyr::summarize
+mutate <- dplyr::mutate
+
+data=readRDS("acc_data.rds")
+user_list=names(data)
+
+## Function to get vmc data for all participants given device location and time window H
+vmc_loc_tw=function(location_id,tw){
+  vmc_all=NULL
+  for(i in 1:32){
+    df.i=data[[user_list[i]]]
+  
+    map_vec <- rep(NA, 99)
+    map_vec[c(1,2,3,4,77,99)] <- c("walking", "descending_stairs",  "ascending_stairs",
+                               "driving", "clapping", "non_study_activity")
+    df.i$activity_lab <- map_vec[df.i$activity]
+
+    df.lw <- df.i %>% 
+      select(activity_lab, time_s, x = lw_x, y = lw_y, z = lw_z) %>%
+      mutate(loc_id = "left_wrist")
+
+    df.lh <- df.i %>% 
+      select(activity_lab, time_s, x = lh_x, y = lh_y, z = lh_z) %>%
+      mutate(loc_id = "left_hip")
+
+    df.la <- df.i %>% 
+      select(activity_lab, time_s, x = la_x, y = la_y, z = la_z) %>%
+      mutate(loc_id = "left_ankle")
+
+    df.ra <- df.i %>% 
+      select(activity_lab, time_s, x = ra_x, y = ra_y, z = ra_z) %>%
+      mutate(loc_id = "right_ankle")
+
+    df.all <- rbind(df.lw, df.lh, df.la, df.ra)
+    rm(df.lw, df.lh, df.la, df.ra, df.i)
+
+    loc_id.level <- c("left_wrist", "left_hip", "left_ankle", "right_ankle")
+    activity_lab.level <- c("non_study_activity", "driving", "clapping", "walking", 
+                        "ascending_stairs", "descending_stairs")
+
+    df.all %<>% 
+      mutate(azimuth = atan2(y, x),
+         elevation = atan2(z, sqrt(x^2 + y^2)),
+         vm = sqrt(x^2 + y^2 + z^2))
+
+    df.sub <-
+      df.all %>% 
+      filter(loc_id == location_id) %>%
+      arrange(time_s)
+
+## Function to compute vmc from a vm window vector
+    vmc <- function(vm.win){
+      mean(abs(vm.win - mean(vm.win)))
+}
+
+## Compute vmc vector in 3-seconds windows 
+    vm <- df.sub$vm
+## Vector length of 3-seconds data window given data collection frequency 100 Hz 
+    hz <- 100
+    win.vl <- hz * tw  
+    rn.seq <- seq(1, to = length(vm), by = win.vl)
+
+    vmc.vec <- sapply(rn.seq, function(rn.i){
+      vm.win.idx <- rn.i : (rn.i + win.vl - 1)
+      vm.win <- vm[vm.win.idx]
+      vmc(vm.win)
+    })
+
+    vmc.df <- data.frame(
+      vmc = vmc.vec,
+      time_s = df.sub$time_s[rn.seq],
+      rn_seq = rn.seq,
+      id=user_list[i],
+      activity_lab = df.sub$activity_lab[rn.seq]) %>%
+      filter(activity_lab != "non_study_activity") %>%
+      mutate(activity_lab = factor(activity_lab, levels = activity_lab.level))
+  
+    vmc_all=rbind(vmc_all,vmc.df)
+  }
+  return(vmc_all)
+}
+```
+
+```{r EDA}
+vmc_lw_3=vmc_loc_tw("left_wrist",3)
+vmc_lw_3_driving=vmc_lw_3 %>% filter(activity_lab=="driving")
+ggplot(vmc_lw_3_driving, aes(x = time_s / 60, y = vmc, color = id)) + 
+  geom_point(alpha = 0.7) + 
+  labs(x = "Experiment time [min]", y = "Vector magnitude count",
+       title = "Vector magnitude count (in 3-sec windows) over the experiment time",
+       color = "ID") + 
+  theme_minimal()
+```
