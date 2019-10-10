@@ -15,7 +15,9 @@ library(magrittr)
 library(reshape2)
 library(ggplot2)
 library(latex2exp)
+library(gridExtra)
 library(raster)
+library(plotrix)
 library(dplyr)
 library(rlist)
 select <- dplyr::select; filter <- dplyr::filter; summarize <- dplyr::summarize
@@ -101,7 +103,7 @@ vmc_loc_tw=function(location_id,tw){
 }
 ```
 
-```{r EDA}
+```{r eval=FALSE}
 vmc_lw_3=vmc_loc_tw("left_wrist",3)
 vmc_lw_3_driving=vmc_lw_3 %>% filter(activity_lab=="driving")
 ggplot(vmc_lw_3_driving, aes(x = time_s / 60, y = vmc, color = id)) + 
@@ -110,4 +112,33 @@ ggplot(vmc_lw_3_driving, aes(x = time_s / 60, y = vmc, color = id)) +
        title = "Vector magnitude count (in 3-sec windows) over the experiment time",
        color = "ID") + 
   theme_minimal()
+```
+
+```{r plot}
+loc_id.level <- c("left_wrist", "left_hip", "left_ankle", "right_ankle")
+activity_lab.level <- c("driving", "clapping", "walking", 
+                        "ascending_stairs", "descending_stairs")
+H=c(3,5,10)
+setwd("C:\\Users\\Doddle\\Desktop\\2nd year\\Advanced Topics\\Ciprian\\140.831.project2\\data")
+m=1
+plot_list=list()
+for(i in 1:4){
+  for(j in 1:5){
+    for(k in 1:3){
+      vmc_plot=vmc_loc_tw(loc_id.level[i],H[k])
+      vmc_plot_sub=vmc_plot %>% filter(activity_lab==activity_lab.level[j])
+      p=ggplot(vmc_plot_sub, aes(x = time_s / 60, y = vmc, color = id)) + 
+         geom_point(alpha = 0.7) + 
+         labs(x = "Experiment time [min]", y = "Vector magnitude count",
+         title = paste("Vector magnitude count (in",H[k],"-sec windows) over the experiment\ntime for",activity_lab.level[j],"on",loc_id.level[i] ,"device"),
+         color = "ID") + 
+         theme_minimal()
+      plot_list[[m]]=p
+      m=m+1
+      png(paste(loc_id.level[i],"_",activity_lab.level[j],"_",H[k],".png"))
+      print(p)
+      dev.off()
+    }
+  }
+}  
 ```
