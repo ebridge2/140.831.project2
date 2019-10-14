@@ -130,8 +130,18 @@ windowed.dat <- lapply(window.widths, function(window.width) {
 })
 
 names(windowed.dat) <- window.widths
-saveRDS(windowed.dat, '../../data/windowed_features.rds')
+
+windowed.dat.merged <- lapply(windowed.dat, function(window_d) {
+  window_d %>%
+    gather(Feature, Value, -ID, -Activity, -Location, -window) %>%
+    unite(Temp, Location, Feature, sep=".") %>%
+    spread(Temp, Value)
+})
+names(windowed.dat.merged) <- window.widths
+
+saveRDS(list(by_location=windowed.dat, merged=windowed.dat.merged), '../../data/windowed_features.rds')
 ```
+
 
 ```{r}
 ```

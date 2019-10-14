@@ -23,7 +23,7 @@ library(rlist)
 select <- dplyr::select; filter <- dplyr::filter; summarize <- dplyr::summarize
 mutate <- dplyr::mutate
 
-data=readRDS("acc_data.rds")
+data=readRDS("../../data/acc_data.rds")
 user_list=names(data)
 
 ## Function to get vmc data for all participants given device location and time window H
