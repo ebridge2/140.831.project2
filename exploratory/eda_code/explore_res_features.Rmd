@@ -1,0 +1,137 @@
+---
+title: "Comparing Across Scale and Method"
+author: "Eric Bridgeford"
+date: "October 14, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+require(tidyverse)
+require(gridExtra)
+require(mgc)
+sessionInfo()
+select <- dplyr::select; filter <- dplyr::filter; summarise <- dplyr::summarise
+mutate <- dplyr::mutate; rename <- dplyr::rename
+```
+
+```{r, eval=FALSE}
+acc.dat <- readRDS("../../data/acc_data.rds")
+```
+
+```{r, eval=FALSE}
+user_list <- names(acc.dat)
+acc.dat.list <- lapply(user_list, function(id) {
+  id.dat <- acc.dat[[id]]
+  id.dat$ID <- id
+  id.dat %>%
+    rename(Activity=activity_lab, Time=time_s) %>%
+    select(-activity)
+})
+names(acc.dat.list) <- user_list
+acc.dat.wide <- acc.dat.list %>%
+  bind_rows() %>%
+  rename(left_wrist.x=lw_x, left_wrist.y=lw_y, left_wrist.z=lw_z,
+         left_hip.x=lh_x, left_hip.y=lh_y, left_hip.z=lh_z,
+         left_wrist.x=lw_x, left_wrist.y=lw_y, left_wrist.z=lw_z,
+         left_ankle.x=la_x, left_ankle.y=la_y, left_ankle.z=la_z,
+         right_ankle.x=ra_x, right_ankle.y=ra_y, right_ankle.z=ra_z) %>%
+  mutate(Activity=factor(Activity, levels=c("non_study_activity", "clapping", "walking",
+                                            "descending_stairs", "ascending_stairs", "driving"))) %>%
+    mutate(Activity=recode_factor(Activity, "non_study_activity"="Non Study Activity", "clapping"="Clapping", "walking"="Walking",
+                                  "descending_stairs"="Descending Stairs", "ascending_stairs"="Ascending Stairs",
+                                  "driving"="Driving"))
+
+# reformat into x, y, z
+acc.dat.xyz.long <- acc.dat.wide %>%
+  gather(Var, Val, -ID, -Time, -Activity) %>%
+  separate(Var, into=c("Location", "Var2"), sep="[\\.]") %>%
+  mutate(Location=factor(Location, levels=c("left_wrist", "left_hip", "left_ankle", "right_ankle"))) %>%
+  spread(Var2, Val)
+# add VM , azimuth, and elevationannotations
+acc.dat.xyz.long <- acc.dat.xyz.long %>%
+  mutate(Azimuth = atan2(y, x),
+         Elevation = atan2(z, sqrt(x^2 + y^2)),
+         VM = sqrt(x^2 + y^2 + z^2))
+```
+
+```{r, eval=FALSE}
+saveRDS(list(list=acc.dat.list, wide=acc.dat.wide, long=acc.dat.xyz.long), "../../data/acc_data_upd.rds")
+```
+
+```{r}
+acc.dat.xyz.long <- readRDS('../../data/acc_data_upd.rds')$long %>%
+  filter(Activity != "Non Study Activity") %>%
+  droplevels()
+```
+
+```{r}
+## Function to compute vmc from a vm window vector
+vmc <- function(vm) {
+  mean(abs(vm - mean(vm)))
+}
+
+window.widths <- c(1, 3, 5, 10, 20)
+sampling.freq <- 100
+
+add_window <- function(data, window.length) {
+  data %>%
+    group_by(ID, Activity, Location) %>%
+    arrange(Time) %>%
+    mutate(window=floor(row_number()/window.length))
+}
+
+windowed.dat <- lapply(window.widths, function(window.width) {
+  # number of blocks for the window itself
+  window.length <- sampling.freq * window.width
+  
+  # add window annotation column
+  acc.dat.xyz.windowed <- acc.dat.xyz.long %>%
+    add_window(window.length)
+  
+  # add summary statistics for each window
+  window.sum.dat <- acc.dat.xyz.windowed %>%
+    # remove time column
+    select(-Time) %>%
+    # gather by (ID, Activity, Location, window) the respective
+    # feature of interest
+    gather(Feature, Value, -ID, -Activity, -Location, -window) %>%
+    # group by ID, Activity, Location, window, and Feature
+    group_by(ID, Activity, Location, window, Feature) %>%
+    # compute summary statistics
+    summarise(mean=mean(Value, na.rm=TRUE),
+                   sd=sd(Value, na.rm=TRUE),
+                   q5=quantile(Value, probs=.05, na.rm=TRUE),
+                   q25=quantile(Value, probs=.25, na.rm=TRUE),
+                   q50=quantile(Value, probs=.50, na.rm=TRUE),
+                   q75=quantile(Value, probs=.75, na.rm=TRUE),
+                   q95=quantile(Value, probs=.95, na.rm=TRUE)) %>%
+    # remove NAs added by grouping combinations
+    filter(!is.na(Feature)) %>%
+    # gather into temporary statistics so that we can have as x.mean, x.max, y.mean, y.max, etc.
+    gather(Statistic, Value, -ID, -Activity, -Location, -window, -Feature) %>%
+    # add the Feature and Statistic name columns together
+    unite(Temp, Feature, Statistic, sep=".") %>%
+    # and spread it out
+    spread(Temp, Value) %>%
+    # join on ID, Activity, Location, window
+    left_join(acc.dat.xyz.windowed %>%
+                # group on ID, Activity, Location, window
+                group_by(ID, Activity, Location, window) %>%
+                # compute VMC per window
+                summarise(VMC=vmc(VM)) %>%
+                # select relevant columns of interest
+                select(ID, Activity, Location, window, VMC))
+  
+  return(window.sum.dat)
+})
+
+names(windowed.dat) <- window.widths
+saveRDS(windowed.dat, '../../data/windowed_features.rds')
+```
+
+```{r}
+```
