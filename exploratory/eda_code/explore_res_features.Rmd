@@ -142,121 +142,71 @@ names(windowed.dat.merged) <- window.widths
 saveRDS(list(by_location=windowed.dat, merged=windowed.dat.merged), '../../data/windowed_features.rds')
 ```
 
+```{r}
+dat <- readRDS('../../data/windowed_features.rds')
+windowed.dat <- dat$by_location; windowed.dat.merged <- dat$merged
+```
 
 ```{r}
-## compute MGC when leveraging all accelerometers simultaneously
-# iterate over each resolution
-activity.agg.all.effects <- lapply(names(windowed.dat.merged), function(res) {
-  res.window <- windowed.dat.merged[[res]]
-  # iterate over the activities available
-  activity.names <- c(unique(res.window$Activity), "Overall")
-  lapply(activity.names, function(Activity) {
-    dat.res.act <- res.window %>%
-      select(-ID, -Activity, -window) 
-    # if not all activities, compute MGC for the individual activity
-    if (Activity != "Overall") {
-      # compute MGC over all features at once with respect to particular activity
-      p.value <- mgc.ksample(dat.res.act, res.window$Activity == Activity,
-                             mgc.opts=list(nperm=100))$p.value
-    } else {
-      # compute MGC over all features at once with respect to particular activity
-      p.value <- mgc.ksample(dat.res.act, res.window$Activity,
-                             mgc.opts=list(nperm=100))$p.value
-    }
-    return(data.frame(Activity=Activity, Resolution=res, p.value=p.value))
-  }) %>%
-    bind_rows()
-}) %>%
-  bind_rows()
+Activities <- c(as.character(unique(windowed.dat$`1`$Activity)), "All")
+Features <- colnames(windowed.dat$`1`)
+Features <- c(Features[!(Features %in% c("ID", "Activity", "Location", "window"))], "All")
+Locations <- c(as.character(unique(windowed.dat$`1`$Location)), "All")
 
-## compute MGC when leveraging each accelerometer individually
-# iterate over each resolution
-activity.individ.all.effects <- lapply(names(windowed.dat), function(res) {
-  res.window <- windowed.dat.merged[[res]]
-  # iterate over the activities available
-  activity.names <- c(unique(res.window$Activity), "Overall")
-  Features <- colnames(res.window)
-  Features <- Features[!(Features %in% c("ID", "Activity", "Location", "window"))]
-  lapply(Features, function(Feature) {
-    lapply(activity.names, function(Activity) {
-      feat.res <- res.window %>%
-        select(contains(Feature))
-      # if not all activities, compute MGC for the individual activity
-      if (Activity != "Overall") {
-        # compute MGC over all features at once with respect to particular activity
-        p.value <- mgc.ksample(feat.res, res.window$Activity == Activity)$p.value
-      } else {
-        # compute MGC over all features at once with respect to particular activity
-        p.value <- mgc.ksample(feat.res, res.window$Activity)$p.value
-      }
-      return(data.frame(Activity=Activity, Resolution=res, Feature=Feature, p.value=p.value))
-    }) %>%
-      bind_rows()
-  }) %>%
-    bind_rows()
-}) %>%
-  bind_rows()
-
-
-## compute MGC when leveraging all accelerometers simultaneously
-# iterate over each resolution
-activity.agg.perloc.effects <- lapply(names(windowed.dat.merged), function(res) {
-  res.window <- windowed.dat.merged[[res]]
-  # iterate over the activities available
-  activity.names <- c(unique(res.window$Activity), "Overall")
-  lapply(activity.names, function(Activity) {
-    lapply(unique(res.window$Location), function(Location) {
-      dat.res.act <- res.window %>%
-        filter(Location == Location) %>%
-        select(-ID, -Activity, -window, -Location)
-      # if not all activities, compute MGC for the individual activity
-      if (Activity != "Overall") {
-        # compute MGC over all features at once with respect to particular activity
-        p.value <- mgc.ksample(dat.res.act, res.window$Activity == Activity,
-                               mgc.opts=list(nperm=100))$p.value
-      } else {
-        # compute MGC over all features at once with respect to particular activity
-        p.value <- mgc.ksample(dat.res.act, res.window$Activity,
-                               mgc.opts=list(nperm=100))$p.value
-      }
-      return(data.frame(Activity=Activity, Resolution=res, Location=Location, p.value=p.value))
-    }) %>%
-      bind_rows()
-  }) %>%
-    bind_rows()
-}) %>%
-  bind_rows()
-
-## compute MGC when leveraging each accelerometer individually
-# iterate over each resolution
-activity.individ.perloc.effects <- lapply(names(windowed.dat), function(res) {
-  res.window <- windowed.dat.merged[[res]]
-  # iterate over the activities available
-  activity.names <- c(unique(res.window$Activity), "Overall")
-  Features <- colnames(res.window)
-  Features <- Features[!(Features %in% c("ID", "Activity", "Location", "window"))]
-  lapply(Features, function(Feature) {
-    lapply(activity.names, function(Activity) {
-      lapply(unique(res.window$Location), function(Location) {
-        feat.res <- res.window %>%
-          filter(Location == Location) %>%
-          select(contains(Feature))
-        # if not all activities, compute MGC for the individual activity
-        if (Activity != "Overall") {
-          # compute MGC over all features at once with respect to particular activity
-          p.value <- mgc.ksample(feat.res, res.window$Activity == Activity)$p.value
+do.call(c, lapply(names(dat.base), function(Resolution) {
+  # Go activity by activity
+  do.call(c, lapply(c(unique(dat.res.ind$Activity), "All"), function(Activity) {
+    do.call(c, lapply(c(Features, "All"), function(Feature) {
+      lapply(c(unique(dat.res.ind$Location), "All"), function(Location) {
+        # decide which data to use for the experiment
+        if (Location == "All" & Feature == "All") {
+          base.dat <- windowed.dat.merged[[Resolution]]
         } else {
-          # compute MGC over all features at once with respect to particular activity
-          p.value <- mgc.ksample(feat.res, res.window$Activity)$p.value
+          base.dat <- windowed.dat[[Resolution]]
         }
-        return(data.frame(Activity=Activity, Resolution=res, Feature=Feature,
-                          Location=Location, p.value=p.value))
-      }) %>%
-        bind_rows()
-    }) %>%
-      bind_rows()
-  }) %>%
-    bind_rows()
-}) %>%
+        # obtain the X data matrix
+        if (Location != "All" & Feature != "All") {
+          X <- base.dat %>%
+            filter(Location == Location) %>%
+            select(contains(Feature))
+        } else if (Location != "All" & Feature == "All") {
+          X <- base.dat %>%
+            filter(Location == Location)
+        } else if (Location == "All" & Feature == "All") {
+          X <- base.dat
+        } else {
+          # skip since we have already done all the features individually 
+          # if Location is All but Features is not
+          return(NULL)
+        }
+        # obtain the corresponding Y vector
+        if (Activity != "All") {
+          Y <- (X$Activity == Activity)
+        } else {
+          Y <- X$Activity
+        }
+        # remove extraneous columns from X
+        if (Location == "All" & Feature == "All") {
+          X <- X %>%
+            ungroup() %>%
+            select(-ID, -Activity, -window)
+        } else {
+          X <- X %>%
+            ungroup() %>%
+            select(-ID, -Activity, -window, -Location)
+        }
+        return(list(X=X, Y=Y, Location=Location, Resolution=Resolution,
+                    Feature=Feature, Activity=Activity))
+      })
+    }))
+  }))
+}))
+
+results <- mclapply(experiments, function(experiment) {
+  p.value <- do.call(mgc.ksample, list(X=experiment$X, Y=experiment$Y, nperm=100))$p.value
+  return(data.frame(Resolution=experiment$Resolution, Location=experiment$Location,
+                    Activity=experiment$Activity, Feature=experiment$Feature, p.value=p.value))
+  
+}, mc.cores=detectCores() - 1) %>%
   bind_rows()
 ```
