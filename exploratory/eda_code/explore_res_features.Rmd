@@ -144,7 +144,14 @@ saveRDS(list(by_location=windowed.dat, merged=windowed.dat.merged), '../../data/
 
 ```{r}
 dat <- readRDS('../../data/windowed_features.rds')
-windowed.dat <- dat$by_location; windowed.dat.merged <- dat$merged
+
+windowed.dat <- lapply(dat$by_location, function(res) {
+  res %>% ungroup()
+})
+
+windowed.dat.merged <- lapply(dat$merged, function(res) {
+  res %>% ungroup()
+})
 ```
 
 ```{r}
@@ -155,24 +162,24 @@ Locations <- c(as.character(unique(windowed.dat$`1`$Location)), "All")
 
 do.call(c, lapply(names(dat.base), function(Resolution) {
   # Go activity by activity
-  do.call(c, lapply(c(unique(dat.res.ind$Activity), "All"), function(Activity) {
-    do.call(c, lapply(c(Features, "All"), function(Feature) {
-      lapply(c(unique(dat.res.ind$Location), "All"), function(Location) {
+  do.call(c, lapply(c(unique(dat.res.ind$Activity), "All"), function(activity) {
+    do.call(c, lapply(c(Features, "All"), function(feature) {
+      lapply(c(unique(dat.res.ind$Location), "All"), function(location) {
         # decide which data to use for the experiment
-        if (Location == "All" & Feature == "All") {
+        if (location == "All" & feature == "All") {
           base.dat <- windowed.dat.merged[[Resolution]]
         } else {
           base.dat <- windowed.dat[[Resolution]]
         }
         # obtain the X data matrix
-        if (Location != "All" & Feature != "All") {
+        if (location != "All" & feature != "All") {
           X <- base.dat %>%
-            filter(Location == Location) %>%
-            select(contains(Feature))
-        } else if (Location != "All" & Feature == "All") {
+            filter(Location == location) %>%
+            select(contains(feature), Location, Activity, ID, window)
+        } else if (location != "All" & feature == "All") {
           X <- base.dat %>%
-            filter(Location == Location)
-        } else if (Location == "All" & Feature == "All") {
+            filter(Location == location)
+        } else if (Location == "All" & feature == "All") {
           X <- base.dat
         } else {
           # skip since we have already done all the features individually 
@@ -180,23 +187,21 @@ do.call(c, lapply(names(dat.base), function(Resolution) {
           return(NULL)
         }
         # obtain the corresponding Y vector
-        if (Activity != "All") {
-          Y <- (X$Activity == Activity)
+        if (activity != "All") {
+          Y <- (X$Activity == activity)
         } else {
           Y <- X$Activity
         }
         # remove extraneous columns from X
-        if (Location == "All" & Feature == "All") {
+        if (location == "All" & feature == "All") {
           X <- X %>%
-            ungroup() %>%
             select(-ID, -Activity, -window)
         } else {
           X <- X %>%
-            ungroup() %>%
             select(-ID, -Activity, -window, -Location)
         }
-        return(list(X=X, Y=Y, Location=Location, Resolution=Resolution,
-                    Feature=Feature, Activity=Activity))
+        return(list(X=X, Y=Y, Location=location, Resolution=Resolution,
+                    Feature=feature, Activity=Activity))
       })
     }))
   }))
