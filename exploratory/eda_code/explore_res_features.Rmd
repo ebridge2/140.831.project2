@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 require(tidyverse)
 require(gridExtra)
 require(mgc)
+require(parallel)
 sessionInfo()
 select <- dplyr::select; filter <- dplyr::filter; summarise <- dplyr::summarise
 mutate <- dplyr::mutate; rename <- dplyr::rename
@@ -68,7 +69,7 @@ acc.dat.xyz.long <- readRDS('../../data/acc_data_upd.rds')$long %>%
   droplevels()
 ```
 
-```{r}
+```{r, eval=FALSE}
 ## Function to compute vmc from a vm window vector
 vmc <- function(vm) {
   mean(abs(vm - mean(vm)))
@@ -154,18 +155,20 @@ windowed.dat.merged <- lapply(dat$merged, function(res) {
 })
 ```
 
-```{r}
+Note: the below section will probably crash your computer if you try to run it. Was executed on 96 core, 1 TB machine.
+
+```{r, eval=FALSE}
 Activities <- c(as.character(unique(windowed.dat$`1`$Activity)), "All")
 Features <- colnames(windowed.dat$`1`)
 Features <- c(Features[!(Features %in% c("ID", "Activity", "Location", "window"))], "All")
 Locations <- c(as.character(unique(windowed.dat$`1`$Location)), "All")
-Resolutions <- names(windowed.dat.merged)
+Resolutions <- c("3", "5", "10") # names(windowed.dat.merged)
 
-do.call(c, lapply(Resolutions, function(Resolution) {
+experiments <- do.call(c, lapply(Resolutions, function(Resolution) {
   # Go activity by activity
-  do.call(c, lapply(c(unique(dat.res.ind$Activity), "All"), function(activity) {
-    do.call(c, lapply(c(Features, "All"), function(feature) {
-      lapply(c(unique(dat.res.ind$Location), "All"), function(location) {
+  do.call(c, lapply(Activities, function(activity) {
+    do.call(c, lapply(Features, function(feature) {
+      lapply(Locations, function(location) {
         # decide which data to use for the experiment
         if (location == "All" & feature == "All") {
           base.dat <- windowed.dat.merged[[Resolution]]
@@ -201,22 +204,36 @@ do.call(c, lapply(Resolutions, function(Resolution) {
           X <- X %>%
             select(-ID, -Activity, -window, -Location)
         }
-        return(list(X=X, Y=Y, Location=location, Resolution=Resolution,
+        return(list(X=X, Y=Y, Location=location, Resolution=as.integer(Resolution),
                     Feature=feature, Activity=activity))
       })
     }))
   }))
 }))
 
+experiments[sapply(experiments, is.null)] <- NULL
 results <- mclapply(experiments, function(experiment) {
-  print(sprintf("Res=%d, Location=%s, Activity=%s, Feature=%s", experiment$Resolution,
-                experiment$Location, experiment$Activity, experiment$Feature))
-  p.value <- do.call(mgc.ksample, list(X=experiment$X, Y=experiment$Y, nperm=100))$p.value
-  return(data.frame(Resolution=experiment$Resolution, Location=experiment$Location,
-                    Activity=experiment$Activity, Feature=experiment$Feature, p.value=p.value))
-  
+  tryCatch({
+    if (!is.null(experiment)) {
+      print(sprintf("Res=%d, Location=%s, Activity=%s, Feature=%s", experiment$Resolution,
+                    experiment$Location, experiment$Activity, experiment$Feature))
+      p.value <- do.call(mgc.ksample, list(X=experiment$X, Y=experiment$Y,
+                                           mgc.opts=list(nperm=100, fast=500)))$p.value
+      return(data.frame(Resolution=experiment$Resolution, Location=experiment$Location,
+                        Activity=experiment$Activity, Feature=experiment$Feature, p.value=p.value))
+    } else {
+      return(NULL)
+    }
+  }, error=function(e) {return(NULL)})
 }, mc.cores=detectCores() - 1)
 
 results.bound <- do.call(rbind, results)
 saveRDS(list(raw=results, bound=results.bound), '../../data/effect_size_inv.rds')
+
+```
+
+## Random Forest Code
+
+```{r}
+
 ```
