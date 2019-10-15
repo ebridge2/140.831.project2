@@ -159,8 +159,9 @@ Activities <- c(as.character(unique(windowed.dat$`1`$Activity)), "All")
 Features <- colnames(windowed.dat$`1`)
 Features <- c(Features[!(Features %in% c("ID", "Activity", "Location", "window"))], "All")
 Locations <- c(as.character(unique(windowed.dat$`1`$Location)), "All")
+Resolutions <- names(windowed.dat.merged)
 
-do.call(c, lapply(names(dat.base), function(Resolution) {
+do.call(c, lapply(Resolutions, function(Resolution) {
   # Go activity by activity
   do.call(c, lapply(c(unique(dat.res.ind$Activity), "All"), function(activity) {
     do.call(c, lapply(c(Features, "All"), function(feature) {
@@ -179,7 +180,7 @@ do.call(c, lapply(names(dat.base), function(Resolution) {
         } else if (location != "All" & feature == "All") {
           X <- base.dat %>%
             filter(Location == location)
-        } else if (Location == "All" & feature == "All") {
+        } else if (location == "All" & feature == "All") {
           X <- base.dat
         } else {
           # skip since we have already done all the features individually 
@@ -201,17 +202,21 @@ do.call(c, lapply(names(dat.base), function(Resolution) {
             select(-ID, -Activity, -window, -Location)
         }
         return(list(X=X, Y=Y, Location=location, Resolution=Resolution,
-                    Feature=feature, Activity=Activity))
+                    Feature=feature, Activity=activity))
       })
     }))
   }))
 }))
 
 results <- mclapply(experiments, function(experiment) {
+  print(sprintf("Res=%d, Location=%s, Activity=%s, Feature=%s", experiment$Resolution,
+                experiment$Location, experiment$Activity, experiment$Feature))
   p.value <- do.call(mgc.ksample, list(X=experiment$X, Y=experiment$Y, nperm=100))$p.value
   return(data.frame(Resolution=experiment$Resolution, Location=experiment$Location,
                     Activity=experiment$Activity, Feature=experiment$Feature, p.value=p.value))
   
-}, mc.cores=detectCores() - 1) %>%
-  bind_rows()
+}, mc.cores=detectCores() - 1)
+
+results.bound <- do.call(rbind, results)
+saveRDS(list(raw=results, bound=results.bound), '../../data/effect_size_inv.rds')
 ```
