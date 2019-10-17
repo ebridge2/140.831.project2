@@ -163,12 +163,13 @@ Features <- colnames(windowed.dat$`1`)
 Features <- c(Features[!(Features %in% c("ID", "Activity", "Location", "window"))], "All")
 Locations <- c(as.character(unique(windowed.dat$`1`$Location)), "All")
 Resolutions <- c("3", "5", "10") # names(windowed.dat.merged)
-
+nrep <- 10
+max.size <- 1000
 experiments <- do.call(c, lapply(Resolutions, function(Resolution) {
   # Go activity by activity
   do.call(c, lapply(Activities, function(activity) {
     do.call(c, lapply(Features, function(feature) {
-      lapply(Locations, function(location) {
+      do.call(c, lapply(Locations, function(location) {
         # decide which data to use for the experiment
         if (location == "All" & feature == "All") {
           base.dat <- windowed.dat.merged[[Resolution]]
@@ -177,6 +178,7 @@ experiments <- do.call(c, lapply(Resolutions, function(Resolution) {
         }
         # obtain the X data matrix
         if (location != "All" & feature != "All") {
+          return(NULL)
           X <- base.dat %>%
             filter(Location == location) %>%
             select(contains(feature), Location, Activity, ID, window)
@@ -204,23 +206,32 @@ experiments <- do.call(c, lapply(Resolutions, function(Resolution) {
           X <- X %>%
             select(-ID, -Activity, -window, -Location)
         }
-        return(list(X=X, Y=Y, Location=location, Resolution=as.integer(Resolution),
-                    Feature=feature, Activity=activity))
-      })
+        lapply(1:nrep, function(i) {
+          sample.N <- sample(length(Y), max.size)
+          return(list(X=X[sample.N,], Y=Y[sample.N], Location=location, Resolution=as.integer(Resolution),
+                      Feature=feature, Activity=activity, i=i))
+        })
+      }))
     }))
   }))
 }))
 
 experiments[sapply(experiments, is.null)] <- NULL
+op.path <- '../../data/effect_runs'
+dir.create('../../data/effect_runs')
+fast.mgc <- 500
 results <- mclapply(experiments, function(experiment) {
   tryCatch({
     if (!is.null(experiment)) {
       print(sprintf("Res=%d, Location=%s, Activity=%s, Feature=%s", experiment$Resolution,
                     experiment$Location, experiment$Activity, experiment$Feature))
       p.value <- do.call(mgc.ksample, list(X=experiment$X, Y=experiment$Y,
-                                           mgc.opts=list(nperm=100, fast=500)))$p.value
-      return(data.frame(Resolution=experiment$Resolution, Location=experiment$Location,
-                        Activity=experiment$Activity, Feature=experiment$Feature, p.value=p.value))
+                                           mgc.opts=list(nperm=100, fast=fast.mgc)))$p.value
+      result <- data.frame(Resolution=experiment$Resolution, Location=experiment$Location, i=experiment$i,
+                        Activity=experiment$Activity, Feature=experiment$Feature, p.value=p.value)
+      saveRDS(result, file.path(op.path, paste(experiment$Activity, experiment$Feature, experiment$Location,
+                                               experiment$Resolution, paste(experiment$i, ".rds", sep=""), sep="_")))
+      return(result)
     } else {
       return(NULL)
     }
