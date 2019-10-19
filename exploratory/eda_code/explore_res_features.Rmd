@@ -14,6 +14,8 @@ require(tidyverse)
 require(gridExtra)
 require(mgc)
 require(parallel)
+require(lolR)
+require(rerf)
 sessionInfo()
 select <- dplyr::select; filter <- dplyr::filter; summarise <- dplyr::summarise
 mutate <- dplyr::mutate; rename <- dplyr::rename
@@ -162,8 +164,8 @@ Activities <- c(as.character(unique(windowed.dat$`1`$Activity)), "All")
 Features <- colnames(windowed.dat$`1`)
 Features <- c(Features[!(Features %in% c("ID", "Activity", "Location", "window"))], "All")
 Locations <- c(as.character(unique(windowed.dat$`1`$Location)), "All")
-Resolutions <- c("3", "5", "10") # names(windowed.dat.merged)
-nrep <- 10
+Resolutions <- c("1", "3", "5", "10", "20") # names(windowed.dat.merged)
+nrep <- 30
 max.size <- 1000
 experiments <- do.call(c, lapply(Resolutions, function(Resolution) {
   # Go activity by activity
@@ -219,14 +221,13 @@ experiments <- do.call(c, lapply(Resolutions, function(Resolution) {
 experiments[sapply(experiments, is.null)] <- NULL
 op.path <- '../../data/effect_runs'
 dir.create('../../data/effect_runs')
-fast.mgc <- 500
 results <- mclapply(experiments, function(experiment) {
   tryCatch({
     if (!is.null(experiment)) {
       print(sprintf("Res=%d, Location=%s, Activity=%s, Feature=%s", experiment$Resolution,
                     experiment$Location, experiment$Activity, experiment$Feature))
       p.value <- do.call(mgc.ksample, list(X=experiment$X, Y=experiment$Y,
-                                           mgc.opts=list(nperm=100, fast=fast.mgc)))$p.value
+                                           mgc.opts=list(nperm=100)))$p.value
       result <- data.frame(Resolution=experiment$Resolution, Location=experiment$Location, i=experiment$i,
                         Activity=experiment$Activity, Feature=experiment$Feature, p.value=p.value)
       saveRDS(result, file.path(op.path, paste(experiment$Activity, experiment$Feature, experiment$Location,
@@ -236,15 +237,109 @@ results <- mclapply(experiments, function(experiment) {
       return(NULL)
     }
   }, error=function(e) {return(NULL)})
-}, mc.cores=detectCores() - 1)
+}, mc.cores=detectCores() - 5)
 
 results.bound <- do.call(rbind, results)
 saveRDS(list(raw=results, bound=results.bound), '../../data/effect_size_inv.rds')
 
 ```
 
-## Random Forest Code
+## Random Forest
 
 ```{r}
+Activities <- c("All")
+Features <- colnames(windowed.dat$`1`)
+Features <- c("All")
+Locations <- c(as.character(unique(windowed.dat$`1`$Location)), "All")
+Resolutions <- c("1", "3", "5", "10", "20") # names(windowed.dat.merged)
+k <- 10L  # number of cross validation folds
 
+op.path <- '../../data/xv_results/sporf'
+dir.create('../../data/xv_results/')
+dir.create(op.path)
+no_cores <- detectCores() - 2
+results <- lapply(Resolutions, function(Resolution) {
+  # Go activity by activity
+  lapply(Activities, function(activity) {
+    lapply(Features, function(feature) {
+      lapply(Locations, function(location) {
+        # decide which data to use for the experiment
+        if (location == "All" & feature == "All") {
+          base.dat <- windowed.dat.merged[[Resolution]]
+        } else {
+          base.dat <- windowed.dat[[Resolution]]
+        }
+        # obtain the X data matrix
+        if (location != "All" & feature != "All") {
+          return(NULL)
+          X <- base.dat %>%
+            filter(Location == location) %>%
+            select(contains(feature), Location, Activity, ID, window)
+        } else if (location != "All" & feature == "All") {
+          X <- base.dat %>%
+            filter(Location == location)
+        } else if (location == "All" & feature == "All") {
+          X <- base.dat
+        } else {
+          # skip since we have already done all the features individually 
+          # if Location is All but Features is not
+          return(NULL)
+        }
+        # obtain the corresponding Y vector
+        if (activity != "All") {
+          Y <- (X$Activity == activity)
+        } else {
+          Y <- X$Activity
+        }
+        # remove extraneous columns from X
+        if (location == "All" & feature == "All") {
+          X <- X %>%
+            select(-ID, -Activity, -window)
+        } else {
+          X <- X %>%
+            select(-ID, -Activity, -window, -Location)
+        }
+        # compute cross validation sets
+        xv.sets <- lol.xval.split(X, Y, k=k)
+        p <- ncol(X) # number of features in the data
+        d <- ceiling(sqrt(p)) # number of features to sample at each split
+        # cross validation loop
+        res.xv <- lapply(xv.sets, function(xv.set) {
+          forest <- RerF(X[xv.set$train,], Y[xv.set$train], num.cores=no_cores, FUN=RandMatRF,
+                         paramList=list(p=p, d=d))
+          predictions <- Predict(X[xv.set$test,], forest, num.cores = 1L, Xtrain = X[xv.set$train,])
+          err.rt <- mean(predictions != Y[xv.set$test])
+          return(data.frame(error.rate=err.rt, Location=location, Resolution=as.integer(Resolution),
+                            Feature=feature, Activity=activity, i=i))
+        }) %>%
+          bind_rows()
+        # build forest with all of the data and store the impurity scores for feature
+        # importance scoring downstream
+        forest <- RerF(X[xv.set$train,], Y[xv.set$train], num.cores=no_cores, FUN=RandMatRF,
+                       paramList=list(p=p, d=d), store.impurity=TRUE)
+        # compute feature importance vector for post-hoc inference
+        feature.imp <- FeatureImportance(forest, num.cores=no_cores, type="R")
+        All.out <- list(Location=location, Resolution=as.integer(Resolution),
+                        Feature=feature, Activity=activity, feature.imp=feature.imp)
+        return(list(xv=res.xv, All=All.out))
+      })
+    })
+  })
+})
+
+# collapse list to usable format
+results.col <- unlist(unlist(unlist(results, recursive=FALSE), recursive=FALSE), recursive=FALSE)
+results.col <- results.col[!sapply(results.col, is.null)]
+
+results.xv <- lapply(results.col, function(res) {
+  return(res$xv)
+}) %>%
+  bind_rows()
+
+results.feat <- lapply(results.col, function(res) {
+  return(res$All)
+})
+
+results.bound <- do.call(rbind, results)
+saveRDS(list(raw=results, xv=results.xv, feat=results.feat), '../../data/xv_results.rds')
 ```
