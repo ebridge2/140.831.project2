@@ -26,6 +26,11 @@ mutate <- dplyr::mutate
 data=readRDS("../../data/acc_data.rds")
 user_list=names(data)
 
+dat.3s <-
+
+dat.10s <-
+
+dat.1s <- 
 ## Function to get vmc data for all participants given device location and time window H
 vmc_loc_tw=function(location_id,tw){
   vmc_all=NULL
@@ -73,7 +78,7 @@ vmc_loc_tw=function(location_id,tw){
 ## Function to compute vmc from a vm window vector
     vmc <- function(vm.win){
       mean(abs(vm.win - mean(vm.win)))
-}
+  }
 
 ## Compute vmc vector in 3-seconds windows 
     vm <- df.sub$vm
