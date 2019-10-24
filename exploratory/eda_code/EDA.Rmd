@@ -1,6 +1,6 @@
 ---
-title: "EDA"
-author: "Jiyang Wen"
+title: "Vector Magnitude Count Exploratory Analysis"
+author: "Jiyang, Eric"
 date: "2019/10/8"
 output: html_document
 ---
@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r reshape data}
+```{r reshape data, message=FALSE}
 library(data.table)
 library(magrittr)
 library(reshape2)
@@ -25,13 +25,10 @@ mutate <- dplyr::mutate
 
 data=readRDS("../../data/acc_data.rds")
 user_list=names(data)
+```
+# A function to summarise vector magnitude count for all partcipants for different device locations and different time windows.   
 
-dat.3s <-
-
-dat.10s <-
-
-dat.1s <- 
-## Function to get vmc data for all participants given device location and time window H
+```{r eval=FALSE}
 vmc_loc_tw=function(location_id,tw){
   vmc_all=NULL
   for(i in 1:32){
@@ -108,18 +105,9 @@ vmc_loc_tw=function(location_id,tw){
 }
 ```
 
-```{r eval=FALSE}
-vmc_lw_3=vmc_loc_tw("left_wrist",3)
-vmc_lw_3_driving=vmc_lw_3 %>% filter(activity_lab=="driving")
-ggplot(vmc_lw_3_driving, aes(x = time_s / 60, y = vmc, color = id)) + 
-  geom_point(alpha = 0.7) + 
-  labs(x = "Experiment time [min]", y = "Vector magnitude count",
-       title = "Vector magnitude count (in 3-sec windows) over the experiment time",
-       color = "ID") + 
-  theme_minimal()
-```
+# Making 60 plots
 
-```{r plot}
+```{r eval=FALSE}
 loc_id.level <- c("left_wrist", "left_hip", "left_ankle", "right_ankle")
 activity_lab.level <- c("driving", "clapping", "walking", 
                         "ascending_stairs", "descending_stairs")
@@ -147,3 +135,16 @@ for(i in 1:4){
   }
 }  
 ```
+# Time window
+```{r, echo=FALSE,out.width="33%", out.height="20%",fig.cap="caption",fig.cap="Figure 1: Ascending stairs plots on left ankle for different time windows",fig.show='hold',fig.align='center'}
+knitr::include_graphics(c("left_ankle _ ascending_stairs _ 3 .png","left_ankle _ ascending_stairs _ 5 .png","left_ankle _ ascending_stairs _ 10 .png"),)
+``` 
+
+# Activity type
+```{r, echo=FALSE,out.width="33%", out.height="20%",fig.cap="caption",fig.cap="Figure 2: VMC on left ankle device for 3s time window on different activity types",fig.show='hold',fig.align='center'}
+knitr::include_graphics(c("left_ankle _ clapping _ 3 .png","left_ankle _ walking _ 3 .png","left_ankle _ driving _ 3 .png"),)
+``` 
+```{r, echo=FALSE,out.width="50%", out.height="20%",fig.cap="caption",fig.cap="Figure 2 (cont'): VMC on left ankle device for 3s time window on different activity types",fig.show='hold',fig.align='center'}
+knitr::include_graphics(c("left_ankle _ ascending_stairs _ 3 .png","left_ankle _ descending_stairs _ 3 .png"),)
+``` 
+We found that clapping, driving and walking have their own distinct features, but it is difficult to distinguish from ascending stairs from descending stairs. Therefore we need more features.
