@@ -1,0 +1,77 @@
+---
+title: "Classification Results"
+author: "Eric Bridgeford"
+date: "10/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+require(tidyverse)
+require(gridExtra)
+require(mgc)
+require(parallel)
+require(lolR)
+require(rerf)
+sessionInfo()
+select <- dplyr::select; filter <- dplyr::filter; summarise <- dplyr::summarise
+mutate <- dplyr::mutate; rename <- dplyr::rename
+```
+
+# Feature Screening
+
+```{r}
+effect.size <- readRDS('../data/effect_size_inv.rds')$bound
+
+for (resolution in unique(effect.size$Resolution)) {
+   
+}
+
+
+effect.size %>%
+  mutate(bh=p.adjust(p.value, method="BH")) %>%
+  group_by(Resolution, Location, Feature, Activity) %>%
+  summarise(p.value=median(p.value)) %>%
+  ggplot(aes(x=Activity, y=Location, fill=log10(p.value))) +
+    geom_tile() +
+    theme_bw() +
+    xlab("Activity") +
+    ylab("Location") +
+    facet_grid(Resolution~.)
+
+```
+
+
+# All Activities
+
+```{r}
+xv.all <- readRDS('../data/xv_results.rds')$xv
+xv.walk <- readRDS('../data/xv_results_walking.rds')$xv
+
+xv.all %>%
+  group_by(Location, Resolution) %>%
+  summarise(error.rate=mean(error.rate)) %>%
+  ggplot(aes(x=Location, y=factor(Resolution), fill=error.rate)) +
+    geom_tile() +
+    xlab("Location") +
+    ylab("Resolution") +
+    theme_bw()
+```
+
+# Reduced Activity Set
+
+```{r}
+
+
+xv.walk %>%
+  group_by(Location, Resolution) %>%
+  summarise(error.rate=mean(error.rate)) %>%
+  ggplot(aes(x=Location, y=factor(Resolution), fill=error.rate)) +
+    geom_tile() +
+    xlab("Location") +
+    ylab("Resolution") +
+    theme_bw()
+```
